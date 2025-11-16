@@ -12,7 +12,19 @@ pip install youtube-transcript-api transformers torch
 
 ## 📖 Cách sử dụng
 
-### 🎓 Tạo bài học hoàn chỉnh - HỌC KHÔNG CẦN XEM VIDEO! ⭐⭐⭐
+### 🎓 TẠO BÀI HỌC BẰNG GEMINI AI - NHANH & CHẤT LƯỢNG CAO! ⭐⭐⭐⭐⭐
+```bash
+# Cần Gemini API key (miễn phí): https://makersuite.google.com/app/apikey
+set GEMINI_API_KEY=your_api_key_here
+
+# Tạo bài học (10-30 giây, chất lượng xuất sắc!)
+gemini_lesson.bat "youtube_url" en lesson.md
+# hoặc
+python gemini_lesson.py --url "youtube_url" --language vi --output my_lesson.md
+```
+**Xem hướng dẫn chi tiết:** [GEMINI_GUIDE.md](GEMINI_GUIDE.md)
+
+### 🎓 Tạo bài học với mô hình local (chậm hơn, không cần API)
 ```bash
 create_lesson.bat "youtube_url" en lesson.md
 # hoặc
