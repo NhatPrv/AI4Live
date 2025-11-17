@@ -8,18 +8,60 @@ Tạo bài học hoàn chỉnh từ YouTube bằng Gemini API
 
 import os
 import sys
+
+"""
+Optional Windows networking patching
+- Historically added to work around WinError 10106 under some hosts.
+- This can interfere with certain domains (e.g., Google APIs) if IPs change.
+- Respect env DISABLE_SOCKET_PATCH=1 to skip all monkey-patching.
+"""
+if sys.platform == 'win32' and os.getenv('DISABLE_SOCKET_PATCH') != '1':
+    import socket
+    # Keep IPv4 preference but DO NOT hardcode DNS for external services
+    _original_getaddrinfo = socket.getaddrinfo
+
+    def _patched_getaddrinfo(host, port, family=0, socktype=0, proto=0, flags=0):
+        try:
+            # Prefer IPv4 to avoid odd dual-stack issues on some Windows hosts
+            return _original_getaddrinfo(host, port, socket.AF_INET, socktype, proto, flags)
+        except Exception:
+            return _original_getaddrinfo(host, port, family, socktype, proto, flags)
+
+    try:
+        socket.getaddrinfo = _patched_getaddrinfo
+        import urllib3.util.connection
+        urllib3.util.connection.allowed_gai_family = lambda: socket.AF_INET
+    except Exception:
+        pass
+
+# Fix Windows socket error only if not forcing REST
+if sys.platform == 'win32' and os.getenv('FORCE_GEMINI_REST') != '1':
+    try:
+        import asyncio
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    except Exception:
+        pass
+
 import argparse
+import json
 import re
 from urllib.parse import urlparse, parse_qs
 from typing import List, Dict
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
-    import google.generativeai as genai
 except ImportError:
     print("❌ Thiếu thư viện! Cài đặt bằng lệnh:")
-    print("pip install youtube-transcript-api google-generativeai")
+    print("pip install youtube-transcript-api")
     sys.exit(1)
+
+# Trì hoãn import google.generativeai để tránh lỗi gRPC khi chạy dưới PHP
+def _try_import_genai():
+    try:
+        import google.generativeai as _genai
+        return _genai, None
+    except Exception as e:
+        return None, e
 
 
 # ============================================================================
@@ -27,7 +69,7 @@ except ImportError:
 # ============================================================================
 # Đặt API key của bạn vào đây để không cần nhập mỗi lần chạy
 # Lấy API key miễn phí tại: https://makersuite.google.com/app/apikey
-DEFAULT_GEMINI_API_KEY = "AIzaSyDWbE_JQ8N4OmYAOnCxZ_bb_QQNtl_EyZQ"  # <-- Điền API key của bạn vào đây
+DEFAULT_GEMINI_API_KEY = "AIzaSyAwdh4mOMaIx74psQSTD3EHepcc8eFEpwY"  # <-- Điền API key của bạn vào đây
 
 # Ví dụ:
 # DEFAULT_GEMINI_API_KEY = "AIzaSyABC123..."
@@ -36,6 +78,7 @@ DEFAULT_GEMINI_API_KEY = "AIzaSyDWbE_JQ8N4OmYAOnCxZ_bb_QQNtl_EyZQ"  # <-- Điề
 
 def extract_video_id(url_or_id: str) -> str:
     """Trích xuất video ID từ URL YouTube"""
+    import json
     if re.fullmatch(r"[a-zA-Z0-9_-]{11}", url_or_id):
         return url_or_id
     
@@ -65,6 +108,7 @@ def extract_video_id(url_or_id: str) -> str:
 
 def get_transcript(video_id: str, language: str = "en") -> str:
     """Lấy transcript từ YouTube"""
+    import json
     print(f"📹 Video ID: {video_id}")
     print(f"🌐 Đang lấy transcript (ngôn ngữ: {language})...")
     
@@ -88,8 +132,48 @@ def get_transcript(video_id: str, language: str = "en") -> str:
         raise RuntimeError(f"Không thể lấy transcript: {e}")
 
 
+def load_transcript_from_json(path: str) -> str:
+    """Load transcript JSON file (e.g., from youtubetranscript.com or fetch_transcript.py) and join to text"""
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Support multiple JSON formats:
+        # 1. Wrapped format from fetch_transcript.py: {"success": true, "transcript": [...], "language": "vi"}
+        # 2. Direct format: {"transcripts": [...]} or {"events": [...]} or {"segments": [...]}
+        # 3. Simple array: [{"text": "...", ...}, ...]
+        
+        items = []
+        if isinstance(data, dict):
+            if 'transcript' in data:
+                # Format from fetch_transcript.py
+                items = data['transcript']
+            else:
+                # Try other common keys
+                items = data.get('transcripts') or data.get('events') or data.get('segments') or []
+        else:
+            # Direct array
+            items = data
+        
+        parts = []
+        for it in items:
+            if isinstance(it, dict):
+                t = it.get('text') or it.get('utf8')
+                if t:
+                    parts.append(t)
+        text = "\n".join(parts).strip()
+        if not text:
+            raise ValueError("Transcript JSON rỗng hoặc không có trường 'text'")
+        wc = len(text.split())
+        print(f"✅ Đã tải transcript từ file (khoảng {wc} từ)\n")
+        return text
+    except Exception as e:
+        raise RuntimeError(f"Không thể đọc transcript từ file JSON: {e}")
+
+
 def extract_key_points(transcript: str, max_points: int = 50) -> List[str]:
     """
+    import json
     Trích xuất key points từ transcript
     Chia transcript thành các câu và lọc những câu quan trọng
     """
@@ -153,13 +237,28 @@ def generate_lesson_with_gemini(
     language: str,
     api_key: str
 ) -> str:
+    import json
     """Generate bài học hoàn chỉnh bằng Gemini API"""
     
     print("🤖 Đang kết nối với Gemini AI...")
     
-    # Cấu hình Gemini
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    # LUÔN ƯU TIÊN REST API để tránh lỗi gRPC WinError 10106 trên Windows/PHP
+    # Chỉ dùng gRPC nếu FORCE_GEMINI_GRPC=1
+    use_rest = os.getenv("FORCE_GEMINI_GRPC") != "1"
+    genai = None
+    genai_err = None
+    if not use_rest:
+        genai, genai_err = _try_import_genai()
+        if genai_err is not None:
+            # Fallback sang REST nếu import thất bại
+            use_rest = True
+    
+    # Sử dụng gemini-2.5-flash (model mới nhất có trong API v1)
+    model_name = 'gemini-2.5-flash'
+    if not use_rest:
+        # Dùng thư viện google-generativeai (nếu import được)
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
     
     # Chuẩn bị key points
     key_points_text = "\n".join([f"- {point}" for point in key_points])
@@ -256,8 +355,36 @@ The lesson must be COMPLETE so readers can learn WITHOUT WATCHING THE VIDEO.
     print("   (Quá trình này mất 10-30 giây...)\n")
     
     try:
-        response = model.generate_content(prompt)
-        lesson = response.text
+        if use_rest:
+            import json, requests
+            # Sử dụng API v1 thay vì v1beta
+            url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={api_key}"
+            payload = {
+                "contents": [
+                    {"role": "user", "parts": [{"text": prompt}]}
+                ]
+            }
+            headers = {"Content-Type": "application/json"}
+            r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=120)
+            r.raise_for_status()
+            data = r.json()
+            # Trích nội dung text từ response REST
+            lesson = ""
+            try:
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    for p in parts:
+                        t = p.get("text", "")
+                        if t:
+                            lesson += t
+            except Exception:
+                pass
+            if not lesson:
+                raise RuntimeError(f"Phản hồi không hợp lệ từ REST API: {data}")
+        else:
+            response = model.generate_content(prompt)
+            lesson = response.text
         print("✅ Đã tạo bài học thành công!\n")
         return lesson
     except Exception as e:
@@ -268,6 +395,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Tạo bài học từ YouTube bằng Gemini AI"
     )
+    import json
     parser.add_argument(
         "--url",
         required=True,
@@ -285,6 +413,10 @@ def main():
     parser.add_argument(
         "--output", "-o",
         help="File đầu ra (nếu không chỉ định, chỉ in ra terminal)"
+    )
+    parser.add_argument(
+        "--transcript-json",
+        help="Đường dẫn file JSON transcript để bỏ qua bước tải từ YouTube"
     )
     parser.add_argument(
         "--max-points",
@@ -321,8 +453,11 @@ def main():
         # Bước 1: Lấy video ID
         video_id = extract_video_id(args.url)
         
-        # Bước 2: Lấy transcript
-        transcript = get_transcript(video_id, args.language)
+        # Bước 2: Lấy transcript (ưu tiên từ file JSON nếu được cung cấp)
+        if args.transcript_json and os.path.isfile(args.transcript_json):
+            transcript = load_transcript_from_json(args.transcript_json)
+        else:
+            transcript = get_transcript(video_id, args.language)
         
         # Bước 3: Trích xuất key points
         key_points = extract_key_points(transcript, args.max_points)
