@@ -320,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
     <?php endif; ?>
 
-    <form method="post" action="">
+    <form method="post" action="" id="lessonForm">
       <label for="url">URL YouTube</label>
       <input type="text" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." value="<?= htmlspecialchars($url, ENT_QUOTES, 'UTF-8') ?>" required />
 
@@ -331,6 +331,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </select>
 
       <button type="submit" name="submit">Tạo bài học</button>
+      <button type="button" onclick="uploadToDrive()" style="margin-left: 10px; background: #28a745;" <?= $output === '' ? 'disabled' : '' ?> id="uploadBtn">📤 Lưu lên Drive</button>
     </form>
 
     <?php if ($error !== ''): ?>
@@ -361,6 +362,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </div>
 
   <script>
+    // Upload to Google Drive
+    function uploadToDrive() {
+      if (!confirm('Lưu bài học này lên Google Drive?')) return;
+      
+      const btn = document.getElementById('uploadBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Đang upload...';
+      
+      // Get video title from lesson
+      const result = document.getElementById('result');
+      const lesson = result ? result.value : '';
+      const titleMatch = lesson.match(/^#\s+(.+)$/m);
+      const videoTitle = titleMatch ? titleMatch[1].replace(/[📚🎯💡📝🔍📋❓]/g, '').trim() : 'Bài học';
+      
+      // Call upload script
+      fetch('upload_drive.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'title=' + encodeURIComponent(videoTitle)
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          alert('✅ Đã lưu bài học lên Google Drive!\n\nLink: ' + data.link);
+        } else {
+          alert('❌ Lỗi: ' + data.error);
+        }
+        btn.disabled = false;
+        btn.textContent = '📤 Lưu lên Drive';
+      })
+      .catch(err => {
+        alert('❌ Lỗi: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = '📤 Lưu lên Drive';
+      });
+    }
+  
     // AJAX form submission - no page reload
     const form = document.querySelector('form');
     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -447,6 +485,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           form.insertAdjacentHTML('afterend', resultOk.outerHTML);
           form.insertAdjacentHTML('beforeend', resultLabel.outerHTML);
           form.insertAdjacentHTML('beforeend', resultTextarea.outerHTML);
+          // Enable upload button
+          document.getElementById('uploadBtn').disabled = false;
                 } else {
                   console.log('⚠️ No result found in response');
         }

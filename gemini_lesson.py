@@ -253,8 +253,8 @@ def generate_lesson_with_gemini(
             # Fallback sang REST nếu import thất bại
             use_rest = True
     
-    # Sử dụng gemini-2.5-flash (model mới nhất có trong API v1)
-    model_name = 'gemini-2.5-flash'
+    # Sử dụng gemini-2.0-flash (model mới, nhanh, ổn định)
+    model_name = 'gemini-2.0-flash'
     if not use_rest:
         # Dùng thư viện google-generativeai (nếu import được)
         genai.configure(api_key=api_key)
