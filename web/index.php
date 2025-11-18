@@ -248,7 +248,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tạo bài học từ YouTube (Gemini)</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; background: #f7f7fb; color: #222; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #f7f7fb; color: #222; display: flex; height: 100vh; overflow: hidden; }
+    
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
+      background: #202123;
+      color: #ececf1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #404146;
+    }
+    
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #404146;
+    }
+    
+    .btn-new-lesson {
+      width: 100%;
+      padding: 12px 16px;
+      background: transparent;
+      border: 1px solid #565869;
+      color: #ececf1;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    
+    .btn-new-lesson:hover {
+      background: #2a2b32;
+    }
+    
+    .sidebar-search {
+      padding: 12px 16px;
+      border-bottom: 1px solid #404146;
+    }
+    
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      background: #40414f;
+      border: 1px solid #565869;
+      border-radius: 6px;
+      color: #ececf1;
+      font-size: 13px;
+    }
+    
+    .sidebar-lessons {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    
+    .lesson-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border-left: 3px solid transparent;
+      font-size: 13px;
+      color: #ececf1;
+    }
+    
+    .lesson-item:hover {
+      background: #2a2b32;
+      border-left-color: #2d6cdf;
+    }
+    
+    .lesson-date {
+      font-size: 11px;
+      color: #8e8ea0;
+      margin-top: 4px;
+    }
+    
+    .no-lessons {
+      padding: 16px;
+      text-align: center;
+      color: #8e8ea0;
+      font-size: 13px;
+    }
+    
+    /* Main content */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .content-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+    
     .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 20px 24px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
     h1 { margin-top: 0; font-size: 20px; }
     label { display: block; margin: 12px 0 6px; font-weight: 600; }
@@ -268,7 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       display: none; 
       position: fixed; 
       top: 0; 
-      left: 0; 
+      left: 260px;
       right: 0; 
       bottom: 0; 
       background: rgba(0,0,0,0.7); 
@@ -304,6 +402,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </style>
 </head>
 <body>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <button class="btn-new-lesson" onclick="newLesson()">
+        <span>➕</span>
+        <span>Bài học mới</span>
+      </button>
+    </div>
+    
+    <div class="sidebar-search">
+      <input type="text" class="search-input" placeholder="Tìm kiếm bài học..." id="searchInput" onkeyup="searchLessons()">
+    </div>
+    
+    <div class="sidebar-lessons" id="lessonsList">
+      <div class="no-lessons">Nhấn nút tải để xem lịch sử</div>
+      <button class="btn-new-lesson" onclick="loadLessons()" style="margin: 8px;">
+        <span>📁</span>
+        <span>Tải lịch sử từ Drive</span>
+      </button>
+    </div>
+  </div>
+
   <!-- Loading Overlay -->
   <div class="loading-overlay" id="loadingOverlay">
     <div class="spinner"></div>
@@ -311,57 +431,139 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="loading-subtext">Quá trình này có thể mất 30-90 giây. Vui lòng chờ...</div>
   </div>
 
-  <div class="container">
-    <h1>📚 Tạo bài học từ YouTube bằng Gemini</h1>
-    
-    <?php if ($debugInfo !== ''): ?>
-      <div style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 8px; margin-bottom: 12px;">
-        <?= htmlspecialchars($debugInfo, ENT_QUOTES, 'UTF-8') ?>
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="content-area">
+      <div class="container">
+        <h1>📚 Tạo bài học từ YouTube bằng Gemini</h1>
+        
+        <?php if ($debugInfo !== ''): ?>
+          <div style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 8px; margin-bottom: 12px;">
+            <?= htmlspecialchars($debugInfo, ENT_QUOTES, 'UTF-8') ?>
+          </div>
+        <?php endif; ?>
+
+        <form method="post" action="" id="lessonForm">
+          <label for="url">URL YouTube</label>
+          <input type="text" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." value="<?= htmlspecialchars($url, ENT_QUOTES, 'UTF-8') ?>" required />
+
+          <label for="language">Ngôn ngữ</label>
+          <select id="language" name="language">
+            <option value="vi" <?= $lang === 'vi' ? 'selected' : '' ?>>Tiếng Việt</option>
+            <option value="en" <?= $lang === 'en' ? 'selected' : '' ?>>English</option>
+          </select>
+
+          <button type="submit" name="submit">Tạo bài học</button>
+          <button type="button" onclick="uploadToDrive()" style="margin-left: 10px; background: #28a745;" <?= $output === '' ? 'disabled' : '' ?> id="uploadBtn">📤 Lưu lên Drive</button>
+        </form>
+
+        <?php if ($error !== ''): ?>
+          <div class="error"><strong>Lỗi:</strong><br><?= nl2br(htmlspecialchars($error, ENT_QUOTES, 'UTF-8')) ?></div>
+        <?php endif; ?>
+        
+        <?php if ($_SERVER['REQUEST_METHOD'] === 'POST' && $exitCode !== null): ?>
+          <div class="note" style="margin-top: 12px; padding: 10px; background: #f0f0f0; border-radius: 8px;">
+            <strong>Debug Info:</strong><br>
+            Exit Code: <?= $exitCode ?><br>
+            Command: <code><?= htmlspecialchars($command ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></code><br>
+            Python Path: <code><?= htmlspecialchars($PYTHON, ENT_QUOTES, 'UTF-8') ?></code><br>
+            Script Path: <code><?= htmlspecialchars($scriptPath, ENT_QUOTES, 'UTF-8') ?></code><br>
+            Script Exists: <?= file_exists($scriptPath) ? '✅ Yes' : '❌ No' ?>
+          </div>
+        <?php endif; ?>
+
+        <?php if ($output !== ''): ?>
+          <div class="ok">✅ Hoàn tất. Kết quả hiển thị bên dưới.</div>
+          <label for="result">Kết quả</label>
+          <textarea id="result" readonly><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></textarea>
+        <?php endif; ?>
+
+        <div class="footer">
+          Yêu cầu: Python (đã cài <code>youtube-transcript-api</code>, <code>google-generativeai</code>) và mạng Internet.<br>
+          API key đã được cấu hình trong code.
+        </div>
       </div>
-    <?php endif; ?>
-
-    <form method="post" action="" id="lessonForm">
-      <label for="url">URL YouTube</label>
-      <input type="text" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." value="<?= htmlspecialchars($url, ENT_QUOTES, 'UTF-8') ?>" required />
-
-      <label for="language">Ngôn ngữ</label>
-      <select id="language" name="language">
-        <option value="vi" <?= $lang === 'vi' ? 'selected' : '' ?>>Tiếng Việt</option>
-        <option value="en" <?= $lang === 'en' ? 'selected' : '' ?>>English</option>
-      </select>
-
-      <button type="submit" name="submit">Tạo bài học</button>
-      <button type="button" onclick="uploadToDrive()" style="margin-left: 10px; background: #28a745;" <?= $output === '' ? 'disabled' : '' ?> id="uploadBtn">📤 Lưu lên Drive</button>
-    </form>
-
-    <?php if ($error !== ''): ?>
-      <div class="error"><strong>Lỗi:</strong><br><?= nl2br(htmlspecialchars($error, ENT_QUOTES, 'UTF-8')) ?></div>
-    <?php endif; ?>
-    
-    <?php if ($_SERVER['REQUEST_METHOD'] === 'POST' && $exitCode !== null): ?>
-      <div class="note" style="margin-top: 12px; padding: 10px; background: #f0f0f0; border-radius: 8px;">
-        <strong>Debug Info:</strong><br>
-        Exit Code: <?= $exitCode ?><br>
-        Command: <code><?= htmlspecialchars($command ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></code><br>
-        Python Path: <code><?= htmlspecialchars($PYTHON, ENT_QUOTES, 'UTF-8') ?></code><br>
-        Script Path: <code><?= htmlspecialchars($scriptPath, ENT_QUOTES, 'UTF-8') ?></code><br>
-        Script Exists: <?= file_exists($scriptPath) ? '✅ Yes' : '❌ No' ?>
-      </div>
-    <?php endif; ?>
-
-    <?php if ($output !== ''): ?>
-      <div class="ok">✅ Hoàn tất. Kết quả hiển thị bên dưới.</div>
-      <label for="result">Kết quả</label>
-      <textarea id="result" readonly><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></textarea>
-    <?php endif; ?>
-
-    <div class="footer">
-      Yêu cầu: Python (đã cài <code>youtube-transcript-api</code>, <code>google-generativeai</code>) và mạng Internet.<br>
-      API key đã được cấu hình trong code.
     </div>
   </div>
 
   <script>
+    let allLessons = [];
+    
+    // Load lessons from Google Drive
+    async function loadLessons() {
+      const list = document.getElementById('lessonsList');
+      list.innerHTML = '<div class="no-lessons">Đang tải...</div>';
+      
+      try {
+        const response = await fetch('get_lessons.php');
+        const text = await response.text();
+        
+        // Try parse as JSON
+        try {
+          const lessons = JSON.parse(text);
+          allLessons = Array.isArray(lessons) ? lessons : [];
+          displayLessons(allLessons);
+        } catch {
+          list.innerHTML = '<div class="no-lessons">Chưa xác thực Drive<br>Lưu bài học để bắt đầu</div>';
+        }
+      } catch (error) {
+        list.innerHTML = '<div class="no-lessons">Lỗi khi tải lịch sử</div>';
+      }
+    }
+    
+    // Display lessons in sidebar
+    function displayLessons(lessons) {
+      const list = document.getElementById('lessonsList');
+      
+      if (lessons.length === 0) {
+        list.innerHTML = '<div class="no-lessons">Chưa có bài học</div>';
+        return;
+      }
+      
+      list.innerHTML = lessons.map(lesson => `
+        <div class="lesson-item" onclick="viewLesson('${lesson.link.replace(/'/g, "\\'")}')">
+          <div>${lesson.title.substring(0, 40)}...</div>
+          <div class="lesson-date">${formatDate(lesson.modifiedTime)}</div>
+        </div>
+      `).join('');
+    }
+    
+    // Search lessons
+    function searchLessons() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = allLessons.filter(lesson => 
+        lesson.title.toLowerCase().includes(query)
+      );
+      displayLessons(filtered);
+    }
+    
+    // Format date
+    function formatDate(dateString) {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diff = now - date;
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      
+      if (days === 0) return 'Hôm nay';
+      if (days === 1) return 'Hôm qua';
+      if (days < 7) return days + ' ngày trước';
+      return date.toLocaleDateString('vi-VN');
+    }
+    
+    // View lesson
+    function viewLesson(link) {
+      window.open(link, '_blank');
+    }
+    
+    // New lesson
+    function newLesson() {
+      document.getElementById('url').value = '';
+      document.querySelector('.ok')?.remove();
+      document.querySelector('textarea#result')?.remove();
+      document.querySelector('label[for="result"]')?.remove();
+      document.getElementById('url').focus();
+    }
+    
     // Upload to Google Drive
     function uploadToDrive() {
       if (!confirm('Lưu bài học này lên Google Drive?')) return;

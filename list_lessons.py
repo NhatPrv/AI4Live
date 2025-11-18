@@ -64,13 +64,9 @@ def list_lessons(service, folder_id):
 if __name__ == '__main__':
     try:
         service = get_drive_service()
-        folder_id = find_folder(service, 'VideoSummarize')
-        
-        if not folder_id:
-            print(json.dumps([]))
-        else:
-            lessons = list_lessons(service, folder_id)
-            print(json.dumps(lessons, ensure_ascii=False))
+        folder_id = '1Z36vizWmxAP0PCgg1p83To7LQdaoMB0S'  # Fixed VideoSummarize folder ID
+        lessons = list_lessons(service, folder_id)
+        print(json.dumps(lessons, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": str(e)}), file=sys.stderr)
         sys.exit(1)
