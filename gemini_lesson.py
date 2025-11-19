@@ -69,7 +69,7 @@ def _try_import_genai():
 # ============================================================================
 # Đặt API key của bạn vào đây để không cần nhập mỗi lần chạy
 # Lấy API key miễn phí tại: https://makersuite.google.com/app/apikey
-DEFAULT_GEMINI_API_KEY = "AIzaSyAwdh4mOMaIx74psQSTD3EHepcc8eFEpwY"  # <-- Điền API key của bạn vào đây
+DEFAULT_GEMINI_API_KEY = "AIzaSyDgrWF9UqYd4pYMJBKdqrwTexM9vTycO0o"  # <-- Điền API key của bạn vào đây
 
 # Ví dụ:
 # DEFAULT_GEMINI_API_KEY = "AIzaSyABC123..."
