@@ -1,49 +1,27 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 
-$python = 'C:\\Python313\\python.exe';
-$script = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'list_lessons.py';
-
-if (!file_exists($script)) {
+$lessonsDir = __DIR__ . DIRECTORY_SEPARATOR . 'lessons';
+if (!is_dir($lessonsDir)) {
     echo json_encode([]);
     exit;
 }
 
-$command = escapeshellarg($python) . ' ' . escapeshellarg($script);
+$files = glob($lessonsDir . DIRECTORY_SEPARATOR . '*.md');
+usort($files, function ($a, $b) {
+    return filemtime($b) <=> filemtime($a);
+});
 
-$descriptorspec = [
-    0 => ['pipe', 'r'],
-    1 => ['pipe', 'w'],
-    2 => ['pipe', 'w'],
-];
-
-// Setup environment for Python
-$env = [
-    'PYTHONIOENCODING' => 'utf-8',
-    'SystemRoot' => getenv('SystemRoot') ?: 'C:\\Windows',
-    'TEMP' => getenv('TEMP') ?: sys_get_temp_dir(),
-    'TMP' => getenv('TMP') ?: sys_get_temp_dir(),
-    'USERPROFILE' => getenv('USERPROFILE'),
-    'APPDATA' => getenv('APPDATA'),
-    'LOCALAPPDATA' => getenv('LOCALAPPDATA'),
-];
-
-$process = proc_open($command, $descriptorspec, $pipes, dirname(__DIR__), $env);
-
-if (is_resource($process)) {
-    fclose($pipes[0]);
-    $output = stream_get_contents($pipes[1]);
-    $error = stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    $exitCode = proc_close($process);
-    
-    if ($exitCode === 0 && !empty($output)) {
-        echo $output;
-    } else {
-        echo '[]';
-    }
-} else {
-    echo '[]';
+$lessons = [];
+foreach ($files as $file) {
+    $content = @file($file);
+    $firstLine = $content && count($content) > 0 ? trim($content[0]) : '';
+    $title = $firstLine !== '' ? $firstLine : pathinfo($file, PATHINFO_FILENAME);
+    $lessons[] = [
+        'title' => $title,
+        'link' => 'lessons/' . basename($file),
+        'modifiedTime' => date(DATE_ISO8601, filemtime($file)),
+    ];
 }
-?>
+
+echo json_encode($lessons);

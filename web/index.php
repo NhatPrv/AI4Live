@@ -719,12 +719,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     <div class="sidebar-lessons" id="lessonsList">
       <div class="no-lessons">
-        📚 Chưa có bài học<br><br>
+        Chua co bai hoc<br><br>
         <button class="btn-new-lesson" onclick="loadLessons()" style="margin: 0; font-size: 13px; padding: 10px 14px;">
-          <span>📁</span>
-          <span>Tải từ Drive</span>
+          <span>&#8635;</span>
+          <span>Tai danh sach</span>
         </button>
       </div>
+    </div>
     </div>
   </div>
 
@@ -768,6 +769,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               📹 <strong>YouTube:</strong> <?= htmlspecialchars($url, ENT_QUOTES, 'UTF-8') ?><br>
               🌐 <strong>Ngôn ngữ:</strong> <?= $lang === 'vi' ? 'Tiếng Việt 🇻🇳' : 'English 🇺🇸' ?>
             </div>
+            <textarea id="rawMarkdown" style="display:none;"><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></textarea>
           </div>
           
           <?php if ($error !== ''): ?>
@@ -827,8 +829,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <button class="action-btn" onclick="copyToClipboard()">
                 📋 Sao chép
               </button>
-              <button class="action-btn" onclick="uploadToDrive()">
-                📤 Lưu lên Drive
+              <button class="action-btn" onclick="saveLessonLocal(this)">
+                Luu bai hoc
               </button>
               <button class="action-btn" onclick="downloadMarkdown()">
                 ⬇️ Tải xuống
@@ -875,6 +877,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <script>
     let allLessons = [];
     let currentLessonContent = '';
+    let lessonMarkdown = <?= json_encode($output) ?>;
+    const computeHash = (text) => text ? `${text.length}:${text.slice(0, 32)}` : '';
+    let lastSavedHash = computeHash(lessonMarkdown);
+
+    function deriveLessonTitle() {
+      const raw = lessonMarkdown || '';
+      const lines = raw.split(/\r?\n/).map(l => l.trim());
+      let heading = lines.find(l => l.startsWith('# '));
+      if (heading) {
+        return heading.replace(/^#+\s*/, '') || 'Bai hoc';
+      }
+      const firstLine = lines.find(l => l.length > 0);
+      return firstLine || 'Bai hoc';
+    }
     
     // Auto-scroll to bottom on page load if there's content
     window.addEventListener('load', function() {
@@ -884,10 +900,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
     });
     
-    // Load lessons from Google Drive
+    // Load lessons from local folder
     async function loadLessons() {
       const list = document.getElementById('lessonsList');
-      list.innerHTML = '<div class="no-lessons">⏳ Đang tải...</div>';
+      list.innerHTML = '<div class="no-lessons">Dang tai...</div>';
       
       try {
         const response = await fetch('get_lessons.php');
@@ -898,19 +914,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           allLessons = Array.isArray(lessons) ? lessons : [];
           displayLessons(allLessons);
         } catch {
-          list.innerHTML = '<div class="no-lessons">⚠️ Chưa xác thực Drive<br><br>Lưu bài học để bắt đầu</div>';
+          list.innerHTML = '<div class=\"no-lessons\">Chua co bai hoc<br><br>Nhap link va luu bai hoc de bat dau</div>';
         }
       } catch (error) {
-        list.innerHTML = '<div class="no-lessons">❌ Lỗi khi tải</div>';
+        list.innerHTML = '<div class=\"no-lessons\">Loi khi tai danh sach</div>';
       }
     }
-    
     // Display lessons in sidebar
     function displayLessons(lessons) {
       const list = document.getElementById('lessonsList');
       
       if (lessons.length === 0) {
-        list.innerHTML = '<div class="no-lessons">📭 Chưa có bài học</div>';
+        list.innerHTML = "<div class=\"no-lessons\">Chua co bai hoc</div>";
         return;
       }
       
@@ -977,7 +992,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Download markdown
     function downloadMarkdown() {
-      const content = `<?= addslashes($output) ?>`;
+      const content = lessonMarkdown || '';
       const blob = new Blob([content], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -987,42 +1002,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       URL.revokeObjectURL(url);
     }
     
-    // Upload to Google Drive
-    function uploadToDrive() {
-      if (!confirm('💾 Lưu bài học này lên Google Drive?')) return;
-      
-      const btn = event.target;
-      btn.disabled = true;
-      btn.textContent = '⏳ Đang lưu...';
-      
-      // Get video title from AI response
-      const aiResponse = document.getElementById('aiResponse');
-      const titleMatch = aiResponse?.textContent.match(/^(.+?)(?:\n|$)/);
-      const videoTitle = titleMatch ? titleMatch[1].replace(/[#📚🎯💡📝🔍📋❓]/g, '').trim() : 'Bài học';
-      
-      fetch('upload_drive.php', {
+    // Save lesson locally (manual button or auto)
+    function saveLessonLocal(btn = null, silent = false) {
+      if (!lessonMarkdown) {
+        if (!silent) alert('Chua co noi dung bai hoc de luu.');
+        return;
+      }
+
+      const currentHash = computeHash(lessonMarkdown);
+      if (silent && currentHash === lastSavedHash) {
+        return; // already saved this content
+      }
+
+      const button = btn || null;
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Dang luu...';
+      }
+
+      const videoTitle = deriveLessonTitle();
+
+      fetch('save_lesson.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'title=' + encodeURIComponent(videoTitle)
+        body: 'title=' + encodeURIComponent(videoTitle) + '&content=' + encodeURIComponent(lessonMarkdown)
       })
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          alert('✅ Đã lưu bài học lên Drive!\n\n📄 ' + data.link);
-          loadLessons(); // Reload sidebar
-        } else {
-          alert('❌ Lỗi: ' + data.error);
+          lastSavedHash = currentHash;
+          allLessons = Array.isArray(allLessons) ? allLessons : [];
+          allLessons.unshift({ title: data.title, link: data.link, modifiedTime: data.modifiedTime });
+          displayLessons(allLessons);
+          if (!silent) alert('Da luu bai hoc vao may.');
+        } else if (!silent) {
+          alert('Loi: ' + data.error);
         }
-        btn.disabled = false;
-        btn.textContent = '📤 Lưu lên Drive';
       })
-      .catch(err => {
-        alert('❌ Lỗi: ' + err.message);
-        btn.disabled = false;
-        btn.textContent = '📤 Lưu lên Drive';
+      .catch(err => { if (!silent) alert('Loi: ' + err.message); })
+      .finally(() => {
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Luu bai hoc';
+        }
       });
     }
-  
+
     // AJAX form submission
     const form = document.getElementById('lessonForm');
     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -1106,6 +1131,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (newMessages) {
           messagesArea.innerHTML = newMessages.innerHTML;
         }
+
+        const rawMd = doc.querySelector('#rawMarkdown');
+        lessonMarkdown = rawMd ? (rawMd.textContent || '') : '';
+        const newHash = computeHash(lessonMarkdown);
+        if (lessonMarkdown && newHash !== lastSavedHash) {
+          saveLessonLocal(null, true); // auto-save to history on success
+        }
         
         // Auto-scroll to bottom
         chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -1135,3 +1167,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </script>
 </body>
 </html>
+

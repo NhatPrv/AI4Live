@@ -3,3 +3,4 @@ credentials.json
 token.pickle
 *.pickle
 web/tmp/*.json
+web/lessons/
