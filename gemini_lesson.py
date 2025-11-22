@@ -61,6 +61,22 @@ def get_transcript(video_id: str, language: str = "en") -> str:
     return text
 
 
+def load_transcript_from_json(path: str) -> str:
+    """Doc transcript tu file JSON duoc luu san."""
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        entries = data.get("transcript") or []
+    elif isinstance(data, list):
+        entries = data
+    else:
+        entries = []
+    text = " ".join(e.get("text", "") for e in entries if isinstance(e, dict) and e.get("text"))
+    text = re.sub(r"\s+", " ", text).strip()
+    print(f"�o. Doc transcript tu {os.path.basename(path)} ({len(text.split())} t���)\n")
+    return text
+
+
 def download_audio(video_id: str) -> str:
     url = f"https://www.youtube.com/watch?v={video_id}"
     tmp_dir = tempfile.mkdtemp(prefix="yt_audio_")
