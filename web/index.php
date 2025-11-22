@@ -5,7 +5,7 @@
 header('Content-Type: text/html; charset=utf-8');
 mb_internal_encoding('UTF-8');
 ini_set('default_charset', 'UTF-8');
-set_time_limit(300);
+set_time_limit(900); // allow longer processing for ASR/transcript generation
 
 $config = require __DIR__ . '/config.php';
 $PYTHON = $config['python'] ?? 'python';

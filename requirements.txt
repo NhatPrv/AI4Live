@@ -2,3 +2,5 @@ youtube-transcript-api
 transformers
 torch
 google-generativeai
+yt-dlp
+faster-whisper
