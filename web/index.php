@@ -969,6 +969,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       div.textContent = text;
       return div.innerHTML;
     }
+
+    // Simple markdown renderer for saved lessons
+    function renderMarkdown(md) {
+      let html = md;
+      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+      html = html.replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>');
+      html = html.replace(/^\* (.+)$/gm, '<li>$1</li>');
+      html = html.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+      html = html.replace(/\n\n/g, '</p><p>');
+      html = '<p>' + html + '</p>';
+      html = html.replace(/<p><h/g, '<h');
+      html = html.replace(/<\/h1><\/p>/g, '</h1>');
+      html = html.replace(/<\/h2><\/p>/g, '</h2>');
+      html = html.replace(/<\/h3><\/p>/g, '</h3>');
+      html = html.replace(/<p><ul>/g, '<ul>');
+      html = html.replace(/<\/ul><\/p>/g, '</ul>');
+      html = html.replace(/<p><\/p>/g, '');
+      return html;
+    }
     
     // View lesson
     function viewLesson(link) {
@@ -988,7 +1009,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   <div class="message-role">Bai hoc da luu</div>
                 </div>
                 <div class="message-content">
-                  <pre style="white-space: pre-wrap; font-family: inherit; margin: 0;">${escapeHtml(text)}</pre>
+                  ${renderMarkdown(escapeHtml(text))}
                 </div>
               </div>
             `;
