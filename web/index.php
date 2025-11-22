@@ -972,7 +972,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // View lesson
     function viewLesson(link) {
-      window.open(link, '_blank');
+      fetch(link)
+        .then(r => {
+          if (!r.ok) throw new Error('Khong tai duoc bai hoc');
+          return r.text();
+        })
+        .then(text => {
+          lessonMarkdown = text;
+          const messagesArea = document.getElementById('messagesArea');
+          if (messagesArea) {
+            messagesArea.innerHTML = `
+              <div class="message">
+                <div class="message-header">
+                  <div class="message-avatar ai-avatar">AI</div>
+                  <div class="message-role">Bai hoc da luu</div>
+                </div>
+                <div class="message-content">
+                  <pre style="white-space: pre-wrap; font-family: inherit; margin: 0;">${escapeHtml(text)}</pre>
+                </div>
+              </div>
+            `;
+          }
+        })
+        .catch(err => alert('Loi khi tai bai hoc: ' + err.message));
     }
     
     // New lesson - reload page
